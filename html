@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Smart Excel Web</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;700&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.17.4/xlsx.full.min.js"></script>
+    <style>
+        :root {
+            --primary: #2ecc71;
+            --bg-color1: #1a1a1a;
+            --bg-color2: #2d2d2d;
+            --text-color: #ffffff;
+            --cell-bg: rgba(255,255,255,0.1);
+            --border-color: rgba(255,255,255,0.3);
+        }
+
+        body {
+            font-family: 'Roboto', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: linear-gradient(135deg, var(--bg-color1), var(--bg-color2));
+            color: var(--text-color);
+            min-height: 100vh;
+            transition: all 0.3s;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            background: rgba(0,0,0,0.3);
+            border-radius: 10px;
+            padding: 20px;
+            backdrop-filter: blur(5px);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            transition: 0.2s;
+        }
+
+        .btn:hover {
+            opacity: 0.9;
+            transform: translateY(-1px);
+        }
+
+        .spreadsheet {
+            overflow: auto;
+            border: 1px solid var(--border-color);
+            border-radius: 5px;
+            background: var(--cell-bg);
+            max-height: 60vh;
+        }
+
+        table {
+            border-collapse: collapse;
+            width: 100%;
+        }
+
+        th, td {
+            border: 1px solid var(--border-color);
+            padding: 10px;
+            min-width: 150px;
+            position: relative;
+        }
+
+        th {
+            background: rgba(0,0,0,0.2);
+            font-weight: 700;
+            user-select: none;
+        }
+
+        td input {
+            width: 100%;
+            background: transparent;
+            border: none;
+            color: var(--text-color);
+            font-family: inherit;
+            font-size: 14px;
+        }
+
+        .design-panel {
+            position: fixed;
+            right: 20px;
+            top: 20px;
+            background: rgba(0,0,0,0.5);
+            padding: 15px;
+            border-radius: 10px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(0,0,0,0.9);
+            padding: 20px;
+            border-radius: 15px;
+            z-index: 1000;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="design-panel">
+            <input type="color" id="color1" value="#1a1a1a">
+            <input type="color" id="color2" value="#2d2d2d">
+            <select id="gradientType">
+                <option value="135deg">Линейный</option>
+                <option value="circle">Радиальный</option>
+            </select>
+        </div>
+
+        <div class="toolbar">
+            <button class="btn" onclick="addRow()">➕ Строка</button>
+            <button class="btn" onclick="addColumn()">➕ Столбец</button>
+            <button class="btn" onclick="toggleCalculator()">🧮 Калькулятор</button>
+            <button class="btn" onclick="importTable()">📁 Импорт</button>
+            <button class="btn" onclick="exportTable()">💾 Экспорт</button>
+            <input type="file" id="fileInput" hidden accept=".xlsx,.csv">
+        </div>
+
+        <div class="spreadsheet">
+            <table id="spreadsheetTable">
+                <thead id="headerRow"></thead>
+                <tbody id="tableBody"></tbody>
+            </table>
+        </div>
+
+        <div class="modal" id="calculatorModal">
+            <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 5px;">
+                <input type="text" id="calcInput" style="grid-column: 1 / -1; padding: 10px; margin-bottom: 10px;">
+                <!-- Кнопки калькулятора -->
+                <button class="btn" onclick="calcInput.value += '7'">7</button>
+                <button class="btn" onclick="calcInput.value += '8'">8</button>
+                <button class="btn" onclick="calcInput.value += '9'">9</button>
+                <button class="btn" onclick="calcInput.value += '/'">/</button>
+                <button class="btn" onclick="calcInput.value += '4'">4</button>
+                <button class="btn" onclick="calcInput.value += '5'">5</button>
+                <button class="btn" onclick="calcInput.value += '6'">6</button>
+                <button class="btn" onclick="calcInput.value += '*'">×</button>
+                <button class="btn" onclick="calcInput.value += '1'">1</button>
+                <button class="btn" onclick="calcInput.value += '2'">2</button>
+                <button class="btn" onclick="calcInput.value += '3'">3</button>
+                <button class="btn" onclick="calcInput.value += '-'">-</button>
+                <button class="btn" onclick="calcInput.value += '0'">0</button>
+                <button class="btn" onclick="calcInput.value += '.'">.</button>
+                <button class="btn" onclick="calculate()">=</button>
+                <button class="btn" onclick="calcInput.value += '+'">+</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let columns = 5;
+        let rows = 10;
+        let currentData = {};
+
+        // Инициализация таблицы
+        function initTable() {
+            const headerRow = document.getElementById('headerRow');
+            const tableBody = document.getElementById('tableBody');
+            
+            headerRow.innerHTML = '';
+            for(let i = 0; i < columns; i++) {
+                const th = document.createElement('th');
+                th.textContent = String.fromCharCode(65 + i);
+                headerRow.appendChild(th);
+            }
+
+            tableBody.innerHTML = '';
+            for(let r = 0; r < rows; r++) {
+                const tr = document.createElement('tr');
+                for(let c = 0; c < columns; c++) {
+                    const td = document.createElement('td');
+                    const input = document.createElement('input');
+                    input.value = currentData[`${r}-${c}`] || '';
+                    input.addEventListener('input', (e) => {
+                        currentData[`${r}-${c}`] = e.target.value;
+                    });
+                    td.appendChild(input);
+                    tr.appendChild(td);
+                }
+                tableBody.appendChild(tr);
+            }
+        }
+
+        // Калькулятор
+        function toggleCalculator() {
+            const modal = document.getElementById('calculatorModal');
+            modal.style.display = modal.style.display === 'block' ? 'none' : 'block';
+        }
+
+        function calculate() {
+            try {
+                const result = eval(document.getElementById('calcInput').value);
+                document.getElementById('calcInput').value = result;
+            } catch {
+                alert('Ошибка вычисления');
+            }
+        }
+
+        // Настройка дизайна
+        document.querySelectorAll('input[type="color"], #gradientType').forEach(el => {
+            el.addEventListener('input', updateDesign);
+        });
+
+        function updateDesign() {
+            const color1 = document.getElementById('color1').value;
+            const color2 = document.getElementById('color2').value;
+            const type = document.getElementById('gradientType').value;
+            document.body.style.background = 
+                `${type === 'circle' ? 'radial' : 'linear'}-gradient(${type}, ${color1}, ${color2})`;
+        }
+
+        // Импорт/Экспорт
+        function importTable() {
+            document.getElementById('fileInput').click();
+        }
+
+        document.getElementById('fileInput').addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            const reader = new FileReader();
+            
+            reader.onload = function(e) {
+                if(file.name.endsWith('.xlsx')) {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, {header: 1});
+                    
+                    rows = jsonData.length;
+                    columns = jsonData[0].length;
+                    currentData = {};
+                    
+                    jsonData.forEach((row, r) => {
+                        row.forEach((cell, c) => {
+                            currentData[`${r}-${c}`] = cell;
+                        });
+                    });
+                    
+                    initTable();
+                }
+            };
+            
+            reader.readAsArrayBuffer(file);
+        });
+
+        function exportTable() {
+            const wb = XLSX.utils.book_new();
+            const wsData = [];
+            
+            for(let r = 0; r < rows; r++) {
+                const row = [];
+                for(let c = 0; c < columns; c++) {
+                    row.push(currentData[`${r}-${c}`] || '');
+                }
+                wsData.push(row);
+            }
+            
+            const ws = XLSX.utils.aoa_to_sheet(wsData);
+            XLSX.utils.book_append_sheet(wb, ws, "Sheet1");
+            XLSX.writeFile(wb, 'table.xlsx');
+        }
+
+        // Первоначальная загрузка
+        initTable();
+    </script>
+</body>
+</html>
